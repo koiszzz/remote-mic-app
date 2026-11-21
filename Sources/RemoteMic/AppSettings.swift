@@ -333,6 +333,7 @@ final class AppSettings: ObservableObject {
         static let openMainWindowAtLaunch = "openMainWindowAtLaunch"
         static let checksForPreReleaseUpdates = "checksForPreReleaseUpdates"
         static let experimentalContinuousRecordingEnabled = "experimentalContinuousRecordingEnabled"
+        static let xiaomiPowerLongPressMouseModeEnabled = "xiaomiPowerLongPressMouseModeEnabled"
         static let voiceFnTapModeEnabled = "voiceFnTapModeEnabled"
         static let chromecastAllowSystemReservedKeys = "chromecast.allowSystemReservedKeys"
         static let chromecastSystemReservedExceptions = "chromecast.systemReservedExceptions"
@@ -815,6 +816,15 @@ final class AppSettings: ObservableObject {
         }
     }
 
+    @Published var xiaomiPowerLongPressMouseModeEnabled: Bool {
+        didSet {
+            defaults.set(
+                xiaomiPowerLongPressMouseModeEnabled,
+                forKey: Keys.xiaomiPowerLongPressMouseModeEnabled
+            )
+        }
+    }
+
     private var continuousRecordingPowerBindingBackup: ConfiguredButtonAction? {
         didSet { saveContinuousRecordingPowerBindingBackup() }
     }
@@ -1175,6 +1185,9 @@ final class AppSettings: ObservableObject {
         localOriginalAudioRecordingEnabled = defaults.bool(
             forKey: Keys.localOriginalAudioRecordingEnabled
         )
+        xiaomiPowerLongPressMouseModeEnabled = defaults.object(
+            forKey: Keys.xiaomiPowerLongPressMouseModeEnabled
+        ) == nil ? true : defaults.bool(forKey: Keys.xiaomiPowerLongPressMouseModeEnabled)
         continuousRecordingPowerBindingBackup = Self.decodeSetting(
             ConfiguredButtonAction.self,
             forKey: Keys.continuousRecordingPowerBindingBackup,

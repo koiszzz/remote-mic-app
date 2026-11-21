@@ -2954,7 +2954,8 @@ struct SettingsView: View {
                 actionDetail: { button, trigger in mappingActionDetail(for: button, trigger: trigger) },
                 actionSource: { button, trigger in mappingActionSource(for: button, trigger: trigger) },
                 actionConfigured: { button, trigger in
-                    mappingConfiguration(for: button, trigger: trigger).action != .disabled
+                    mappingConfiguration(for: button, trigger: trigger).action != .disabled ||
+                        (button == .power && trigger == .longPress && usesDefaultXiaomiPowerLongPressMouseMode)
                 },
                 onEdit: { button, trigger in
                     selectedRemoteButton = button
@@ -3467,6 +3468,24 @@ struct SettingsView: View {
                 }
 
                 // 只读预览下只禁用会写入的部分；编辑区由下一次按键或手势选择替换。
+                if target.button == .power,
+                   target.trigger == .longPress,
+                   editingMappingProfileID == nil,
+                   settings.selectedRemoteProfile?.model.usesPrivateAdapter != true {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Toggle(
+                            localization.text("button_mapping.power_long_press_mouse_mode.title"),
+                            isOn: $settings.xiaomiPowerLongPressMouseModeEnabled
+                        )
+                        .font(.system(size: 13, weight: .medium))
+                        .toggleStyle(.switch)
+                        Text(localization.text("button_mapping.power_long_press_mouse_mode.detail"))
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.vertical, 4)
+                }
                 mappingProfileBindingControl(button: target.button, trigger: target.trigger)
                 mappingTriggerEditor(target.button, trigger: target.trigger)
                     .disabled(!canWriteMappingBinding(button: target.button, trigger: target.trigger))
@@ -6320,11 +6339,23 @@ struct SettingsView: View {
         }
         let configured = configuredAction ?? mappingConfiguration(for: button, trigger: trigger)
         if configured.action == .disabled {
+            if configuredAction == nil,
+               button == .power,
+               trigger == .longPress,
+               usesDefaultXiaomiPowerLongPressMouseMode {
+                return localization.text("action.toggle_mouse_mode")
+            }
             let explicit = settings.hasExplicitBaseBinding(for: button, trigger: trigger,
                 profileID: settings.selectedRemoteProfileID)
             return localization.text(explicit ? "button_mapping.action.no_action" : "button_mapping.action.not_set")
         }
         return actionSummary(configured)
+    }
+
+    private var usesDefaultXiaomiPowerLongPressMouseMode: Bool {
+        settings.selectedRemoteProfile?.model.usesPrivateAdapter != true &&
+            settings.xiaomiPowerLongPressMouseModeEnabled &&
+            settings.configuredBaseAction(for: .power, trigger: .longPress, profileID: settings.selectedRemoteProfileID).action == .disabled
     }
 
     private func profileActionSummary(_ configured: ConfiguredButtonAction) -> String {
@@ -6338,6 +6369,11 @@ struct SettingsView: View {
         let configured = settings.configuredBaseAction(for: button, trigger: trigger,
             profileID: settings.selectedRemoteProfileID)
         if configured.action == .disabled {
+            if button == .power,
+               trigger == .longPress,
+               usesDefaultXiaomiPowerLongPressMouseMode {
+                return localization.text("action.toggle_mouse_mode")
+            }
             let explicit = settings.hasExplicitBaseBinding(for: button, trigger: trigger,
                 profileID: settings.selectedRemoteProfileID)
             return localization.text(explicit ? "button_mapping.action.no_action" : "button_mapping.action.not_set")
@@ -6466,6 +6502,7 @@ struct SettingsView: View {
         case .volumeUp, .volumeDown, .volumeMute: return "speaker.wave.2"
         case .playPause, .previousCommandLeft, .nextCommandRight: return "play.circle"
         case .toggleLongRecording: return "record.circle"
+        case .toggleMouseMode: return "computermouse"
         default: return "keyboard"
         }
     }

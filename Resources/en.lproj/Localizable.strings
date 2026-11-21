@@ -254,6 +254,7 @@
 "action.focus_input" = "Focus Input Field";
 "action.open_custom_application" = "Open Custom App";
 "action.toggle_long_recording" = "Toggle Continuous Recording";
+"action.toggle_mouse_mode" = "Toggle Mouse Mode";
 "action.open_remote_mic" = "Open SayAll";
 "action.open_codex" = "Open Codex";
 "action.open_workbuddy" = "Open WorkBuddy";
@@ -637,6 +638,13 @@
 "status_item.state.disconnected" = "%@: No devices connected";
 "status_item.state.connected" = "%@: Device connected";
 "status_item.state.streaming" = "%@: Voice active";
+"status_item.state.mouse_mode" = "%@: Mouse mode active";
+"mouse_mode.menu.active" = "Mouse Mode";
+"mouse_mode.hud.activated" = "Mouse Mode On";
+"mouse_mode.hud.activated_detail" = "Arrows move · OK left-click · Hold OK right-click · Hold Power to exit";
+"mouse_mode.hud.deactivated" = "Mouse Mode Off";
+"button_mapping.power_long_press_mouse_mode.title" = "Long-press Power to toggle Mouse Mode";
+"button_mapping.power_long_press_mouse_mode.detail" = "When enabled and no other long-press action is set, holding the Xiaomi remote Power button enters Mouse Mode (arrows move, OK clicks left, holding OK clicks right, hold Power again to exit).";
 "about.alert.description_with_version" = "Version %1$@\nWireless voice and shortcut controls for Xiaomi Bluetooth Remote 2 Pro and Apple Remote.";
 "common.action.ok" = "OK";
 "common.action.copy_link" = "Copy Link";

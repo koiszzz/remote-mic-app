@@ -19,6 +19,7 @@ enum VoiceSessionWarningLevel: String, Equatable {
 enum StatusItemPresentation: String, Equatable {
     case disconnected
     case connected
+    case mouseMode = "mouse_mode"
     case streaming
     case streamingWarning = "streaming_warning"
     case streamingCritical = "streaming_critical"
@@ -38,7 +39,8 @@ enum StatusItemPresentation: String, Equatable {
         watchConnected: Bool,
         webState: WebRemoteSessionState,
         isStreaming: Bool,
-        voiceWarningLevel: VoiceSessionWarningLevel = .none
+        voiceWarningLevel: VoiceSessionWarningLevel = .none,
+        isMouseModeActive: Bool = false
     ) -> Self {
         if isStreaming {
             switch voiceWarningLevel {
@@ -47,6 +49,7 @@ enum StatusItemPresentation: String, Equatable {
             case .critical: return .streamingCritical
             }
         }
+        if isMouseModeActive { return .mouseMode }
         if physicalConnected || phoneConnected || watchConnected { return .connected }
         if case .connected = webState { return .connected }
         return .disconnected
@@ -58,21 +61,24 @@ enum StatusItemPresentation: String, Equatable {
         watchConnected: AnyPublisher<Bool, Never>,
         webState: AnyPublisher<WebRemoteSessionState, Never>,
         isStreaming: AnyPublisher<Bool, Never>,
-        voiceWarningLevel: AnyPublisher<VoiceSessionWarningLevel, Never>? = nil
+        voiceWarningLevel: AnyPublisher<VoiceSessionWarningLevel, Never>? = nil,
+        isMouseModeActive: AnyPublisher<Bool, Never>? = nil
     ) -> AnyPublisher<Self, Never> {
         let warning = voiceWarningLevel ?? Just(VoiceSessionWarningLevel.none).eraseToAnyPublisher()
+        let mouseMode = isMouseModeActive ?? Just(false).eraseToAnyPublisher()
         return Publishers.CombineLatest4(
             physicalConnected, phoneConnected, watchConnected, webState
         )
-        .combineLatest(isStreaming, warning)
-        .map { connections, streaming, warningLevel in
+        .combineLatest(isStreaming, warning, mouseMode)
+        .map { connections, streaming, warningLevel, mouseModeActive in
             resolve(
                 physicalConnected: connections.0,
                 phoneConnected: connections.1,
                 watchConnected: connections.2,
                 webState: connections.3,
                 isStreaming: streaming,
-                voiceWarningLevel: warningLevel
+                voiceWarningLevel: warningLevel,
+                isMouseModeActive: mouseModeActive
             )
         }
         .removeDuplicates()
@@ -82,20 +88,26 @@ enum StatusItemPresentation: String, Equatable {
     @MainActor
     func apply(to button: NSStatusBarButton, description: String) {
         let isStreaming = self == .streaming || self == .streamingWarning || self == .streamingCritical
-        let resourceName = isStreaming ? "StatusIconActiveTemplate" : "StatusIconTemplate"
-        let fallbackSymbol = isStreaming ? "mic.fill" : "dot.radiowaves.left.and.right"
-        // Named images are shared. Keep localized descriptions local to this status item.
-        let templateImage = (NSImage(named: NSImage.Name(resourceName))?.copy() as? NSImage)
-            ?? NSImage(systemSymbolName: fallbackSymbol, accessibilityDescription: description)
         let image: NSImage?
-        switch self {
-        case .streamingWarning:
-            image = Self.coloredImage(templateImage, color: .systemYellow)
-        case .streamingCritical:
-            image = Self.coloredImage(templateImage, color: .systemRed)
-        default:
-            image = templateImage
+        if self == .mouseMode {
+            image = (NSImage(systemSymbolName: "computermouse.fill", accessibilityDescription: description)?.copy() as? NSImage)
+                ?? NSImage(systemSymbolName: "cursorarrow", accessibilityDescription: description)
             image?.isTemplate = true
+        } else {
+            let resourceName = isStreaming ? "StatusIconActiveTemplate" : "StatusIconTemplate"
+            let fallbackSymbol = isStreaming ? "mic.fill" : "dot.radiowaves.left.and.right"
+            // Named images are shared. Keep localized descriptions local to this status item.
+            let templateImage = (NSImage(named: NSImage.Name(resourceName))?.copy() as? NSImage)
+                ?? NSImage(systemSymbolName: fallbackSymbol, accessibilityDescription: description)
+            switch self {
+            case .streamingWarning:
+                image = Self.coloredImage(templateImage, color: .systemYellow)
+            case .streamingCritical:
+                image = Self.coloredImage(templateImage, color: .systemRed)
+            default:
+                image = templateImage
+                image?.isTemplate = true
+            }
         }
         image?.size = NSSize(width: 18, height: 18)
         image?.accessibilityDescription = description

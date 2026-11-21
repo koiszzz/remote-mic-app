@@ -281,6 +281,7 @@ private final class RemoteMicAppDelegate: NSObject, NSApplicationDelegate, NSMen
     private let audioItem = NSMenuItem()
     private let hidItem = NSMenuItem()
     private let macMicrophoneItem = NSMenuItem()
+    private let mouseModeBannerController = MouseModeBannerController()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppLogger.shared.write(
@@ -392,6 +393,7 @@ private final class RemoteMicAppDelegate: NSObject, NSApplicationDelegate, NSMen
             accessibilityGranted: accessibilityGranted
         )
         model.privateFeature.hideHUDImmediately()
+        mouseModeBannerController.hideImmediately()
         model.stop()
         FnKeyDiagnostics.logSnapshot(
             source: "terminate_end",
@@ -606,7 +608,8 @@ private final class RemoteMicAppDelegate: NSObject, NSApplicationDelegate, NSMen
             watchConnected: model.isWatchRemoteConnected,
             webState: model.webRemoteState,
             isStreaming: model.isStreaming,
-            voiceWarningLevel: model.voiceSessionWarningLevel
+            voiceWarningLevel: model.voiceSessionWarningLevel,
+            isMouseModeActive: model.isMouseModeActive
         )
         refreshStatusItemPresentation()
         rebuildStatusMenu()
@@ -918,13 +921,24 @@ private final class RemoteMicAppDelegate: NSObject, NSApplicationDelegate, NSMen
             watchConnected: model.$isWatchRemoteConnected.eraseToAnyPublisher(),
             webState: model.$webRemoteState.eraseToAnyPublisher(),
             isStreaming: model.$isStreaming.eraseToAnyPublisher(),
-            voiceWarningLevel: model.$voiceSessionWarningLevel.eraseToAnyPublisher()
+            voiceWarningLevel: model.$voiceSessionWarningLevel.eraseToAnyPublisher(),
+            isMouseModeActive: model.$isMouseModeActive.eraseToAnyPublisher()
         )
         .receive(on: RunLoop.main)
         .sink { [weak self] presentation in
             // Consume the published snapshot, not properties that @Published has yet to set.
             self?.statusItemPresentation = presentation
             self?.refreshStatusItemPresentation()
+        }
+        .store(in: &subscriptions)
+
+        model.$isMouseModeActive
+        .removeDuplicates()
+        .dropFirst()
+        .receive(on: RunLoop.main)
+        .sink { [weak self] isActive in
+            self?.refreshMenuStatus()
+            self?.mouseModeBannerController.show(active: isActive, localization: self?.localization)
         }
         .store(in: &subscriptions)
 
@@ -1109,7 +1123,9 @@ private final class RemoteMicAppDelegate: NSObject, NSApplicationDelegate, NSMen
         audioItem.title = model.isStreaming
             ? localization.text("connection.status.voice_active")
             : model.audioStatus.text(using: localization)
-        hidItem.title = model.hidStatus.text(using: localization)
+        hidItem.title = model.isMouseModeActive
+            ? model.hidStatus.text(using: localization) + " · " + localization.text("mouse_mode.menu.active")
+            : model.hidStatus.text(using: localization)
         macMicrophoneItem.title = model.macMicrophoneButtonTitle(using: localization)
         if model.macMicrophoneEnabled {
             macMicrophoneItem.attributedTitle = NSAttributedString(

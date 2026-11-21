@@ -5,6 +5,12 @@ import Darwin
 import Foundation
 
 enum KeyboardInjector {
+    enum MouseClickButton: String, Equatable {
+        case left
+        case right
+        case middle
+    }
+
     typealias ApplicationOpener = (
         URL,
         PresetApplication,
@@ -817,7 +823,7 @@ enum KeyboardInjector {
             break
         case .openCustomApplication:
             break
-        case .toggleLongRecording, .openCommonPhrases:
+        case .toggleLongRecording, .toggleMouseMode, .openCommonPhrases:
             break
         case .openRemoteMic, .openCodex, .openWorkBuddy, .openClaude, .openCmux, .openWeChat, .openCursor, .openXcode,
              .openSlack, .openWeCom, .openNeteaseMusic, .openChrome, .openSafari, .openZed, .openDimAgent:
@@ -2526,6 +2532,73 @@ enum KeyboardInjector {
             _ = keyStatePoster(modifier.keyCode, false, active)
         }
         return true
+    }
+
+    static func postMouseMoved(to point: CGPoint) {
+        guard isAccessibilityTrusted,
+              let source = CGEventSource(stateID: .hidSystemState),
+              let event = CGEvent(
+                  mouseEventSource: source,
+                  mouseType: .mouseMoved,
+                  mouseCursorPosition: point,
+                  mouseButton: .left
+              )
+        else { return }
+        event.setIntegerValueField(.eventSourceUserData, value: syntheticEventMarker)
+        event.post(tap: .cghidEventTap)
+    }
+
+    static func postMouseClick(
+        button: MouseClickButton,
+        at point: CGPoint? = nil,
+        clickState: Int64 = 1
+    ) {
+        guard isAccessibilityTrusted,
+              let location = point ?? CGEvent(source: nil)?.location
+        else { return }
+        let downType: CGEventType
+        let upType: CGEventType
+        let mouseButton: CGMouseButton
+        switch button {
+        case .left:
+            downType = .leftMouseDown
+            upType = .leftMouseUp
+            mouseButton = .left
+        case .right:
+            downType = .rightMouseDown
+            upType = .rightMouseUp
+            mouseButton = .right
+        case .middle:
+            downType = .otherMouseDown
+            upType = .otherMouseUp
+            mouseButton = .center
+        }
+        guard let source = CGEventSource(stateID: .hidSystemState),
+              let down = CGEvent(
+                  mouseEventSource: source,
+                  mouseType: downType,
+                  mouseCursorPosition: location,
+                  mouseButton: mouseButton
+              ),
+              let up = CGEvent(
+                  mouseEventSource: source,
+                  mouseType: upType,
+                  mouseCursorPosition: location,
+                  mouseButton: mouseButton
+              )
+        else { return }
+        if button == .middle {
+            down.setIntegerValueField(.mouseEventButtonNumber, value: 2)
+            up.setIntegerValueField(.mouseEventButtonNumber, value: 2)
+        }
+        if clickState > 1 {
+            down.setIntegerValueField(.mouseEventClickState, value: clickState)
+            up.setIntegerValueField(.mouseEventClickState, value: clickState)
+        }
+        down.setIntegerValueField(.eventSourceUserData, value: syntheticEventMarker)
+        up.setIntegerValueField(.eventSourceUserData, value: syntheticEventMarker)
+        down.post(tap: .cghidEventTap)
+        up.post(tap: .cghidEventTap)
     }
 
     private static func postKey(code: CGKeyCode, flags: CGEventFlags = []) {

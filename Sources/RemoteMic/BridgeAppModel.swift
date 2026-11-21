@@ -592,6 +592,7 @@ final class BridgeAppModel: NSObject, ObservableObject, XiaomiBluetoothBridgeDel
     @Published private(set) var audioStatus = LocalizedMessage("audio.output.none_selected")
     @Published private(set) var isRemoteVoiceRecoveryInFlight = false
     @Published private(set) var isStreaming = false
+    @Published private(set) var isMouseModeActive = false
     @Published private(set) var voiceSessionWarningLevel: VoiceSessionWarningLevel = .none
     @Published private(set) var isConnected = false
     @Published private(set) var isVoiceTriggerEnabled = false
@@ -1016,6 +1017,16 @@ final class BridgeAppModel: NSObject, ObservableObject, XiaomiBluetoothBridgeDel
     private var discoveryHIDMonitor: HIDRemoteMonitor?
     private var hidMonitorRebuildWorkItem: DispatchWorkItem?
     private var hidMonitorRebuildPending = false
+    private lazy var mouseModeController: MouseModeController = {
+        let controller = MouseModeController()
+        controller.onStateChange = { [weak self] isActive in
+            guard let self else { return }
+            self.isMouseModeActive = isActive
+            self.hidMonitors.values.forEach { $0.flushInFlightInputState() }
+            self.discoveryHIDMonitor?.flushInFlightInputState()
+        }
+        return controller
+    }()
     private lazy var siriRemoteFeature = SiriRemoteFeatureIntegration(
         logger: { AppLogger.shared.write($0) }
     )
@@ -1748,6 +1759,7 @@ final class BridgeAppModel: NSObject, ObservableObject, XiaomiBluetoothBridgeDel
         hidMonitorRebuildWorkItem = nil
         hidMonitorRebuildPending = false
         cancelConfiguredButtonInteractions(reason: "app_stop")
+        mouseModeController.deactivate(reason: "app_stop")
         // 退出、断连或映射关闭都必须抬起被按住的键，绝不让它在系统里留到下次启动。
         KeyboardHoldExecution.shared.end(reason: "app_stop")
         buttonLifecycleObservers.forEach { NSWorkspace.shared.notificationCenter.removeObserver($0) }
@@ -3251,7 +3263,10 @@ final class BridgeAppModel: NSObject, ObservableObject, XiaomiBluetoothBridgeDel
                 "test_tone=\(isPlayingTestTone) audio_ready=\(isAudioOutputReady)"
         )
         guard started, changed else { return }
-        if event.isSuspending { macMicrophoneSession.stop(failure: .interrupted) }
+        if event.isSuspending {
+            mouseModeController.deactivate(reason: "system_\(event.rawValue)")
+            macMicrophoneSession.stop(failure: .interrupted)
+        }
         setBluetoothSystemSuspended(
             systemAudioSuspensionState.isSuspended,
             reason: event.rawValue
@@ -4422,6 +4437,7 @@ final class BridgeAppModel: NSObject, ObservableObject, XiaomiBluetoothBridgeDel
     }
 
     private func stopHIDMonitors() {
+        mouseModeController.deactivate(reason: "hid_monitors_stopped")
         hidMonitors.values.forEach { $0.stop() }
         discoveryHIDMonitor?.stop()
         hidMonitors.removeAll()
@@ -4634,6 +4650,15 @@ final class BridgeAppModel: NSObject, ObservableObject, XiaomiBluetoothBridgeDel
             guard let self else { return }
             if let profileID { self.selectRemoteProfile(profileID) }
             self.performInternalAction(action, source: Self.commonPhraseHIDSource(profileID))
+        }
+        monitor.isMouseModeActive = { [weak self] in
+            self?.mouseModeController.isActive == true
+        }
+        monitor.mouseModeEdgeHandler = { [weak self] button, edge in
+            self?.mouseModeController.handle(button: button, edge: edge) ?? false
+        }
+        monitor.onRemoteDisconnected = { [weak self] in
+            self?.mouseModeController.deactivate(reason: "remote_disconnected")
         }
         return monitor
     }
@@ -9096,6 +9121,9 @@ final class BridgeAppModel: NSObject, ObservableObject, XiaomiBluetoothBridgeDel
         if action == .openCommonPhrases {
             cancelPendingCommonPhraseButtonActions()
             return membershipFeature.openCommonPhrases(source: source)
+        }
+        if action == .toggleMouseMode {
+            return mouseModeController.toggle()
         }
         guard action == .toggleLongRecording else { return false }
         guard action.isEnabled(

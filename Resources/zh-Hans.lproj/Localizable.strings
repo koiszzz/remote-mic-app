@@ -254,6 +254,7 @@
 "action.focus_input" = "聚焦输入框";
 "action.open_custom_application" = "打开自定义 APP";
 "action.toggle_long_recording" = "切换持续录音";
+"action.toggle_mouse_mode" = "切换鼠标模式";
 "action.open_remote_mic" = "打开无线麦 SayAll";
 "action.open_codex" = "打开 Codex";
 "action.open_workbuddy" = "打开 WorkBuddy";
@@ -637,6 +638,13 @@
 "status_item.state.disconnected" = "%@：未连接设备";
 "status_item.state.connected" = "%@：设备已连接";
 "status_item.state.streaming" = "%@：正在传输语音";
+"status_item.state.mouse_mode" = "%@：鼠标移动模式已开启";
+"mouse_mode.menu.active" = "鼠标移动模式";
+"mouse_mode.hud.activated" = "鼠标移动模式已开启";
+"mouse_mode.hud.activated_detail" = "方向键移动光标 · 确认左键 · 长按右键 · 长按电源键退出";
+"mouse_mode.hud.deactivated" = "已退出鼠标移动模式";
+"button_mapping.power_long_press_mouse_mode.title" = "长按电源键进入/退出鼠标移动模式";
+"button_mapping.power_long_press_mouse_mode.detail" = "开启且未另行配置长按动作时，长按小米遥控器电源键进入鼠标模式；方向键移动光标，确认键单击左键、长按右键，再次长按电源键退出。";
 "about.alert.description_with_version" = "版本 %1$@\n小米蓝牙遥控器 2 Pro 的无线语音与快捷操作工具。";
 "common.action.ok" = "好";
 "common.action.copy_link" = "复制链接";

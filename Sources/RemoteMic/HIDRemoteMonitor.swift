@@ -446,6 +446,10 @@ final class HIDRemoteMonitor {
     var onNativeMappingVerificationFailed: (() -> Void)?
     var onInputReset: ((UUID?) -> Void)?
     var onInternalAction: ((UUID?, ButtonAction) -> Void)?
+    var isMouseModeActive: (() -> Bool)?
+    /// 当返回 `true` 时表示边沿已被鼠标移动模式消费，必须跳过普通手势识别与原生透传。
+    var mouseModeEdgeHandler: ((RemoteButton, RemoteEventEdge) -> Bool)?
+    var onRemoteDisconnected: (() -> Void)?
 
     init(
         settings: AppSettings,
@@ -738,6 +742,7 @@ final class HIDRemoteMonitor {
         permissionPollSubscription?.cancel()
         permissionPollSubscription = nil
         resetInputState()
+        onRemoteDisconnected?()
         nativeKeysNeutralized = false
         if ownsEventSuppressor { eventSuppressor.stop() }
         unregisterAllDeviceReportCallbacks()
@@ -1115,6 +1120,7 @@ final class HIDRemoteMonitor {
             resetInputState()
             nativeKeysNeutralized = false
             activeDeviceIsSeized = false
+            onRemoteDisconnected?()
             updateStatus(LocalizedMessage("button_mapping.status.disconnected"))
             AppLogger.shared.write("HID DISCONNECTED")
             return
@@ -1605,6 +1611,7 @@ final class HIDRemoteMonitor {
     func disconnectSimulatedDevice() {
         deviceFingerprint = nil
         resetInputState()
+        onRemoteDisconnected?()
         nativeKeysNeutralized = false
         activeDeviceIsSeized = false
     }
@@ -1660,13 +1667,16 @@ final class HIDRemoteMonitor {
                 preflightProfileID,
                 button,
                 .longPress
-            )
+            ) || (button == .power && settings.xiaomiPowerLongPressMouseModeEnabled)
             let preflightAction = settings.action(for: button, profileID: preflightProfileID)
+            let preflightMouseModeConsumes = isMouseModeActive?() == true &&
+                MouseModeController.managedButtons.contains(button)
             // An explicit binding owns the click even when it resolves to the same arrow.
             let preflightHasSingleClickOverride = settings.configuredActionOverride?(
                 preflightProfileID, button, .singleClick
             ) != nil || hasOverrideBinding(preflightProfileID, button, .singleClick)
             let usesNativePassthrough = preflightProfileID != nil &&
+                !preflightMouseModeConsumes &&
                 (settings.buttonInteractionSettings(profileID: preflightProfileID).modes[button.rawValue] == nil ||
                  settings.buttonInteractionSettings(profileID: preflightProfileID).migratedRepeatButtons?.contains(button.rawValue) == true) &&
                 settings.interactionModeOverride?(preflightProfileID, button) == nil &&
@@ -1738,6 +1748,12 @@ final class HIDRemoteMonitor {
                 }
                 continue
             }
+            if mouseModeEdgeHandler?(button, .down) == true {
+                if !activeDeviceIsSeized, usesNativePassthrough {
+                    eventSuppressor.arm(button: button, edge: .down)
+                }
+                continue
+            }
             if usesNativePassthrough {
                 nativePassthroughUsages.insert(usage)
                 diagnosticLogger(
@@ -1798,6 +1814,11 @@ final class HIDRemoteMonitor {
             lastPageRepeatAt.removeValue(forKey: usage)
             if let button = RemoteButton.usageMap[usage] {
                 if onRuntimeButton?(profileID, button, .release, reportMilliseconds) == true {
+                    continue
+                }
+                if !usedNativePassthrough,
+                   mouseModeEdgeHandler?(button, .up) == true {
+                    scheduleNonRepeatableRelease(for: button)
                     continue
                 }
                 if buttonInteractions.isTracking(button) {
@@ -2238,6 +2259,12 @@ final class HIDRemoteMonitor {
                 frontmostBundleIdentifier: frontmostBundleIdentifier()
             )
         }
+        if button == .power,
+           settings.xiaomiPowerLongPressMouseModeEnabled,
+           snapshot.long.action == .disabled,
+           !snapshot.opaqueLong {
+            snapshot.long = ConfiguredButtonAction(action: .toggleMouseMode, shortcut: nil)
+        }
         // 方案解析后才知道动作是否可按住：不可用就回到“未设置”，不能把整键判死。
         if let mode = snapshot.mode, mode.isHoldDown, !snapshot.blockers(for: mode).isEmpty {
             snapshot.mode = .once
@@ -2275,11 +2302,17 @@ final class HIDRemoteMonitor {
             )
             return true
         }
-        let configured = captured ?? settings.configuredAction(
+        var configured = captured ?? settings.configuredAction(
             for: button,
             trigger: trigger,
             profileID: profileID
         )
+        if configured.action == .disabled,
+           button == .power,
+           trigger == .longPress,
+           settings.xiaomiPowerLongPressMouseModeEnabled {
+            configured = ConfiguredButtonAction(action: .toggleMouseMode, shortcut: nil)
+        }
         if configured.action == .appSwitcher {
             return performAppSwitcherAction(for: button, trigger: trigger)
         }
@@ -2946,6 +2979,18 @@ final class HIDRemoteMonitor {
                 "active_usages=\(activeUsages.count) physical_edges_preserved=true"
         )
         resetInputState(preservingPhysicalEdges: true)
+    }
+
+    /// 清空在途的手势、连发与防抖锁存，但保留物理按键边沿（`activeUsages`），
+    /// 让模式切换后松键仍能正常配对而不产生幻影动作。
+    func flushInFlightInputState() {
+        repeatTimers.values.forEach { $0.cancel() }
+        repeatTimers.removeAll()
+        lastPageRepeatAt.removeAll()
+        nonRepeatableReleaseTimers.values.forEach { $0.cancel() }
+        nonRepeatableReleaseTimers.removeAll()
+        nonRepeatablePressedButtons.removeAll()
+        resetGestureRecognition()
     }
 
     func cancelConfiguredInteractions(reason: String) { buttonInteractions.cancelAll(reason: reason) }

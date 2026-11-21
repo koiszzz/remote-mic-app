@@ -5854,7 +5854,12 @@ struct RemoteButtonsTests {
         let report = Data([UInt8(button.hidUsage), 0, 0, 0, 0, 0])
         monitor.handleSimulatedReport(reportID: 1, data: report)
         monitor.handleSimulatedReport(reportID: 1, data: report)
-        #expect(performed == [configured])
+        if button == .power {
+            // Power enables long-press mouse mode toggle by default, so singleClick waits for release.
+            #expect(performed.isEmpty)
+        } else {
+            #expect(performed == [configured])
+        }
         for descriptor in button.nativeEvents {
             let down = try nativeEvent(descriptor, down: true)
             #expect(suppressor.handle(type: down.type, event: down))
@@ -5865,6 +5870,9 @@ struct RemoteButtonsTests {
             #expect(!suppressor.handle(type: synthetic.type, event: synthetic))
         }
         monitor.handleSimulatedReport(reportID: 1, data: Data(repeating: 0, count: 6))
+        if button == .power {
+            #expect(performed == [configured])
+        }
         for descriptor in button.nativeEvents {
             let up = try nativeEvent(descriptor, down: false)
             #expect(suppressor.handle(type: up.type, event: up))
